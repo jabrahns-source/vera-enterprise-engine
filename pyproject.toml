@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vera-enterprise-engine"
+version = "0.1.0"
+description = "Deterministic verifiable compute engine for enterprise compliance and AI auditing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Jacarri Sanders", email = "eventheoddsfoundry@gmail.com"}
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "cryptography>=44.0.0",
+    "pydantic>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.28"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
