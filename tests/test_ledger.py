@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -52,3 +51,47 @@ def test_metering(ledger: Ledger):
     stats = {s["tenant_id"]: s["receipt_count"] for s in ledger.metering_stats()}
     assert stats["tenant-a"] == 2
     assert stats["tenant-b"] == 1
+
+
+def test_tenant_isolation(ledger: Ledger):
+    """Sequences and roots are independent per tenant."""
+    a1 = ledger.append("tenant-a", "evt", {"x": 1})
+    b1 = ledger.append("tenant-b", "evt", {"x": 1})
+    a2 = ledger.append("tenant-a", "evt", {"x": 2})
+
+    assert a1.sequence == 1
+    assert b1.sequence == 1
+    assert a2.sequence == 2
+    assert a2.prev_root == a1.merkle_root
+    assert b1.prev_root == "0" * 64
+
+
+def test_verify_unknown_receipt(ledger: Ledger):
+    result = ledger.verify("does-not-exist")
+    assert result["valid"] is False
+    assert result["reason"] == "receipt_not_found"
+
+
+def test_tamper_detection(ledger: Ledger, tmp_path: Path):
+    """Direct DB mutation of payload must fail cryptographic verification."""
+    import json
+    import sqlite3
+
+    r = ledger.append("tamper-tenant", "evt", {"secret": "original"})
+    assert ledger.verify(r.receipt_id)["valid"] is True
+
+    # Tamper with the stored payload
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "UPDATE receipts SET payload = ? WHERE receipt_id = ?",
+        (json.dumps({"secret": "tampered"}), r.receipt_id),
+    )
+    conn.commit()
+    conn.close()
+
+    # Fresh Ledger instance reading the same DB
+    ledger2 = Ledger(db_path=str(db_path))
+    result = ledger2.verify(r.receipt_id)
+    assert result["valid"] is False
+    assert result["reason"] in ("merkle_mismatch", "signature_invalid")

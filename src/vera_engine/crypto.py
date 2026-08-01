@@ -19,12 +19,24 @@ def _load_or_generate_keypair() -> Tuple[Ed25519PrivateKey, Ed25519PublicKey]:
     priv_path = settings.private_key_path
     pub_path = settings.public_key_path
 
+    # Ensure the data directory exists before any key I/O
+    priv_path.parent.mkdir(parents=True, exist_ok=True)
+    pub_path.parent.mkdir(parents=True, exist_ok=True)
+
     if priv_path.exists() and pub_path.exists():
-        private_key = serialization.load_pem_private_key(
-            priv_path.read_bytes(), password=None
-        )
-        public_key = serialization.load_pem_public_key(pub_path.read_bytes())
-        return private_key, public_key  # type: ignore[return-value]
+        try:
+            private_key = serialization.load_pem_private_key(
+                priv_path.read_bytes(), password=None
+            )
+            public_key = serialization.load_pem_public_key(pub_path.read_bytes())
+            if not isinstance(private_key, Ed25519PrivateKey):
+                raise TypeError("Private key is not Ed25519")
+            if not isinstance(public_key, Ed25519PublicKey):
+                raise TypeError("Public key is not Ed25519")
+            return private_key, public_key
+        except Exception as e:
+            # Corrupt or wrong-format keys: regenerate rather than crash the process
+            print(f"[vera_engine.crypto] warning: could not load existing keys ({e}); regenerating")
 
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key()
